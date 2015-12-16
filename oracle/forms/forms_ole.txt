@@ -1,0 +1,1039 @@
+Excel package
+Package specification:
+PACKAGE excel
+IS
+   /*
+             Global excel.Application Object --> this represent excel Object.
+     */
+   appl_id   client_ole2.obj_type;
+
+   /*
+           Open file that act as template. Parameter are:
+           _application_ -- global word parameter that we initialize at 
+           begining.
+           _file_ -- file name we wish to open --> it can be from database, or filesystem...
+   */
+   FUNCTION file_open (application client_ole2.obj_type, FILE VARCHAR2)
+      RETURN client_ole2.obj_type;
+
+   /*
+           Close current file.
+   */
+   PROCEDURE file_close (document client_ole2.obj_type);
+
+   /*
+           Saves current file (It is useful if we need to save current 
+           file using another name)
+   */
+   PROCEDURE file_save_as (document client_ole2.obj_type, FILE VARCHAR2);
+
+   /*
+           Isert number (not formated)
+           x - horizontal axei.
+           y - vertical axis.
+           v - value.
+   */
+   PROCEDURE insert_number (
+      worksheet   client_ole2.obj_type,
+      x           NUMBER,
+      y           NUMBER,
+      v           NUMBER
+   );
+
+   /*
+           Insert number and format it as decimal value. 
+           x - horizontal axei.
+           y - vertical axis.
+           v - value.
+           Napomena: !!!THIS DOES NOT WORK IN EXCEL 2007!!!
+   */
+   PROCEDURE insert_number_decimal (
+      worksheet   client_ole2.obj_type,
+      x           NUMBER,
+      y           NUMBER,
+      v           NUMBER
+   );
+
+   /*
+           Insert characters  (not formated)
+           x - horizontal axei.
+           y - vertical axis.
+           v - value.
+   */
+   PROCEDURE insert_char (
+      worksheet   client_ole2.obj_type,
+      x           NUMBER,
+      y           NUMBER,
+      v           VARCHAR2
+   );
+
+   /*
+           Insert character - formated
+           color - numbers (15 for example is gray)           
+           style - BOLD' or 'ITALIC'
+           x - horizontal axei.
+           y - vertical axis.
+           v - value.
+   */
+   PROCEDURE insert_char_formated (
+      worksheet   client_ole2.obj_type,
+      x           NUMBER,
+      y           NUMBER,
+      v           VARCHAR2,
+      color       NUMBER,
+      style       VARCHAR2
+   );
+
+   /*
+           Set autofit on whole sheet.
+   */
+   PROCEDURE set_auto_fit (worksheet client_ole2.obj_type);
+
+   /*
+           Set autofit for range r. For example. r can be: 'A2:E11'
+   */
+   PROCEDURE set_auto_fit_range (worksheet client_ole2.obj_type, r VARCHAR2);
+
+   /*
+           Put decimal format (0.00) on range r.
+   */
+   PROCEDURE set_decimal_format_range (
+      worksheet   client_ole2.obj_type,
+      r           VARCHAR2
+   );
+
+   /*
+           Create new workbook.
+   */
+   FUNCTION new_workbook (application client_ole2.obj_type)
+      RETURN client_ole2.obj_type;
+
+   /*
+           Create new worksheet.
+   */
+   FUNCTION new_worksheet (workbook client_ole2.obj_type)
+      RETURN client_ole2.obj_type;
+
+   /*
+           Saves file in client tempfolder (It is necessary to save file if edit template).
+   */
+   FUNCTION download_file (
+      file_name         IN   VARCHAR2,
+      table_name        IN   VARCHAR2,
+      column_name       IN   VARCHAR2,
+      where_condition   IN   VARCHAR2
+   )
+      RETURN VARCHAR2;
+
+   /*
+           Run macro on client excel document.
+   */
+   PROCEDURE run_macro_on_document (
+      document   client_ole2.obj_type,
+      macro      VARCHAR2
+   );
+
+   /*
+           Limit network load...not important.
+   */
+   PROCEDURE insert_number_array (
+      worksheet   client_ole2.obj_type,
+      x           NUMBER,
+      y           NUMBER,
+      v           VARCHAR2
+   );
+END;
+Package body:
+PACKAGE BODY excel
+IS
+   FUNCTION file_open (application client_ole2.obj_type, FILE VARCHAR2)
+      RETURN client_ole2.obj_type
+   IS
+      arg_list    client_ole2.list_type;
+      document    client_ole2.obj_type;
+      documents   client_ole2.obj_type;
+   BEGIN
+      arg_list := client_ole2.create_arglist;
+      documents := client_ole2.invoke_obj (application, 'Workbooks');
+      client_ole2.add_arg (arg_list, FILE);
+      document := client_ole2.invoke_obj (documents, 'Open', arg_list);
+      client_ole2.destroy_arglist (arg_list);
+      client_ole2.RELEASE_OBJ (documents);
+      RETURN document;
+   END file_open;
+
+   PROCEDURE file_save_as (document client_ole2.obj_type, FILE VARCHAR2)
+   IS
+      arg_list   client_ole2.list_type;
+   BEGIN
+      arg_list := client_ole2.create_arglist;
+      client_ole2.add_arg (arg_list, FILE);
+      client_ole2.invoke (document, 'SaveAs', arg_list);
+      client_ole2.destroy_arglist (arg_list);
+   END file_save_as;
+
+   FUNCTION new_workbook (application client_ole2.obj_type)
+      RETURN client_ole2.obj_type
+   IS
+      workbook    client_ole2.obj_type;
+      workbooks   client_ole2.obj_type;
+   BEGIN
+      workbooks := client_ole2.get_obj_property (application, 'Workbooks');
+      workbook := client_ole2.invoke_obj (workbooks, 'Add');
+      client_ole2.RELEASE_OBJ (workbooks);
+      RETURN workbook;
+   END new_workbook;
+
+   FUNCTION new_worksheet (workbook client_ole2.obj_type)
+      RETURN client_ole2.obj_type
+   IS
+      worksheets   client_ole2.obj_type;
+      worksheet    client_ole2.obj_type;
+   BEGIN
+      worksheets := client_ole2.get_obj_property (workbook, 'Worksheets');
+      worksheet := client_ole2.invoke_obj (worksheets, 'Add');
+      client_ole2.RELEASE_OBJ (worksheets);
+      RETURN worksheet;
+   END new_worksheet;
+
+   PROCEDURE file_close (document client_ole2.obj_type)
+   IS
+   BEGIN
+      client_ole2.invoke (document, 'Close');
+   END file_close;
+
+   /*
+       Macro:    Cells(3, 4).Value = 3
+                   Cells(3, 4).Select
+                   Selection.NumberFormat = "0.00"
+   */
+   PROCEDURE insert_number_decimal (
+      worksheet   client_ole2.obj_type,
+      x           NUMBER,
+      y           NUMBER,
+      v           NUMBER
+   )
+   IS
+      args        client_ole2.list_type;
+      cell        client_ole2.obj_type;
+      selection   client_ole2.obj_type;
+   BEGIN
+      IF v IS NOT NULL
+      THEN
+         args := client_ole2.create_arglist;
+         client_ole2.add_arg (args, x);
+         client_ole2.add_arg (args, y);
+         cell := client_ole2.get_obj_property (worksheet, 'Cells', args);
+         client_ole2.destroy_arglist (args);
+         client_ole2.set_property (cell, 'Value', v);
+         client_ole2.invoke (cell, 'Select');
+         selection := client_ole2.invoke_obj (appl_id, 'Selection');
+         client_ole2.set_property (selection, 'Numberformat', '#.##0,00');
+         client_ole2.RELEASE_OBJ (selection);
+         client_ole2.RELEASE_OBJ (cell);
+      END IF;
+   END;
+
+   /* Macro:
+                       Cells(x, y).Value = v
+   */
+   PROCEDURE insert_number (
+      worksheet   client_ole2.obj_type,
+      x           NUMBER,
+      y           NUMBER,
+      v           NUMBER
+   )
+   IS
+      args   client_ole2.list_type;
+      cell   ole2.obj_type;
+   BEGIN
+      IF v IS NOT NULL
+      THEN
+         args := client_ole2.create_arglist;
+         client_ole2.add_arg (args, x);
+         client_ole2.add_arg (args, y);
+         cell := client_ole2.get_obj_property (worksheet, 'Cells', args);
+         client_ole2.destroy_arglist (args);
+         client_ole2.set_property (cell, 'Value', v);
+         client_ole2.RELEASE_OBJ (cell);
+      END IF;
+   END;
+
+
+   PROCEDURE insert_char (
+      worksheet   client_ole2.obj_type,
+      x           NUMBER,
+      y           NUMBER,
+      v           VARCHAR2
+   )
+   IS
+      args   client_ole2.list_type;
+      cell   client_ole2.obj_type;
+   BEGIN
+      IF v IS NOT NULL
+      THEN
+         args := client_ole2.create_arglist;
+         client_ole2.add_arg (args, x);
+         client_ole2.add_arg (args, y);
+         cell := client_ole2.get_obj_property (worksheet, 'Cells', args);
+         client_ole2.destroy_arglist (args);
+         client_ole2.set_property (cell, 'Value', v);
+         client_ole2.RELEASE_OBJ (cell);
+      END IF;
+   END;
+
+  
+   /*
+           Macro:
+                       Cells(x, y).Value = v
+                       Cells(x, y).Select
+                       Selection.Interior.ColorIndex = color
+                       if (style in 'BOLD')
+                           Selection.Font.Bold = True
+                       else if (style in 'ITALIC')
+                           Selection.Font.Italic = True
+   */
+   PROCEDURE insert_char_formated (
+      worksheet   client_ole2.obj_type,
+      x           NUMBER,
+      y           NUMBER,
+      v           VARCHAR2,
+      color       NUMBER,
+      style       VARCHAR2
+   )
+   IS
+      args        client_ole2.list_type;
+      cell        client_ole2.obj_type;
+      selection   client_ole2.obj_type;
+      font        client_ole2.obj_type;
+      interior    client_ole2.obj_type;
+   BEGIN
+      IF v IS NOT NULL
+      THEN
+         args := client_ole2.create_arglist;
+         client_ole2.add_arg (args, x);
+         client_ole2.add_arg (args, y);
+         cell := client_ole2.get_obj_property (worksheet, 'Cells', args);
+         client_ole2.destroy_arglist (args);
+         client_ole2.set_property (cell, 'Value', v);
+         client_ole2.invoke (cell, 'Select');
+         selection := client_ole2.invoke_obj (appl_id, 'Selection');
+         font := client_ole2.invoke_obj (selection, 'Font');
+         interior := client_ole2.invoke_obj (selection, 'Interior');
+
+         IF UPPER (style) IN ('BOLD', 'ITALIC')
+         THEN
+            client_ole2.set_property (font, style, TRUE);
+         END IF;
+
+         client_ole2.set_property (interior, 'ColorIndex', color);
+         client_ole2.RELEASE_OBJ (interior);
+         client_ole2.RELEASE_OBJ (font);
+         client_ole2.RELEASE_OBJ (selection);
+         client_ole2.RELEASE_OBJ (cell);
+      END IF;
+   END;
+
+   /*
+           Macro:
+                       Range(r).Select
+                       Selection.Columns.AutoFit
+                       Cells(1,1).Select
+   */
+   PROCEDURE set_auto_fit_range (worksheet client_ole2.obj_type, r VARCHAR2)
+   IS
+      args        client_ole2.list_type;
+      --range
+      rang        client_ole2.obj_type;
+      selection   client_ole2.obj_type;
+      colum       client_ole2.obj_type;
+      cell        client_ole2.obj_type;
+   BEGIN
+      args := client_ole2.create_arglist;
+      client_ole2.add_arg (args, r);
+      rang := client_ole2.get_obj_property (worksheet, 'Range', args);
+      client_ole2.destroy_arglist (args);
+      client_ole2.invoke (rang, 'Select');
+      selection := client_ole2.invoke_obj (appl_id, 'Selection');
+      colum := client_ole2.invoke_obj (selection, 'Columns');
+      client_ole2.invoke (colum, 'AutoFit');
+      --now select upper (1,1) for deselection.      
+      args := client_ole2.create_arglist;
+      client_ole2.add_arg (args, 1);
+      client_ole2.add_arg (args, 1);
+      cell := client_ole2.get_obj_property (worksheet, 'Cells', args);
+      client_ole2.invoke (cell, 'Select');
+      client_ole2.destroy_arglist (args);
+      client_ole2.RELEASE_OBJ (colum);
+      client_ole2.RELEASE_OBJ (selection);
+      client_ole2.RELEASE_OBJ (rang);
+   END set_auto_fit_range;
+
+   /*
+           Macro:
+                       Range(r).Select
+                       Selection.Numberformat = "0.00"
+                       Cells(1,1).Select
+   */
+   PROCEDURE set_decimal_format_range (
+      worksheet   client_ole2.obj_type,
+      r           VARCHAR2
+   )
+   IS
+      args        client_ole2.list_type;
+      --range
+      rang        client_ole2.obj_type;
+      selection   client_ole2.obj_type;
+      --colum Client_OLE2.Obj_Type;
+      cell        client_ole2.obj_type;
+   BEGIN
+      args := client_ole2.create_arglist;
+      client_ole2.add_arg (args, r);
+      rang := client_ole2.get_obj_property (worksheet, 'Range', args);
+      client_ole2.destroy_arglist (args);
+      client_ole2.invoke (rang, 'Select');
+      selection := client_ole2.invoke_obj (appl_id, 'Selection');
+      --colum:= Client_OLE2.invoke_obj(selection, 'Columns');
+      client_ole2.set_property (selection, 'Numberformat', '#.##0,00');
+      --Client_OLE2.invoke(colum, 'AutoFit');
+      --now select upper (1,1) for deselection.      
+      args := client_ole2.create_arglist;
+      client_ole2.add_arg (args, 1);
+      client_ole2.add_arg (args, 1);
+      cell := client_ole2.get_obj_property (worksheet, 'Cells', args);
+      client_ole2.invoke (cell, 'Select');
+      client_ole2.destroy_arglist (args);
+      --Client_OLE2.release_obj(colum);
+      client_ole2.RELEASE_OBJ (selection);
+      client_ole2.RELEASE_OBJ (rang);
+   END set_decimal_format_range;
+
+   /*
+           Macro:Cells.Select
+                       Selection.Columns.AutoFit
+                       Cells(1,1).Select
+   */
+   PROCEDURE set_auto_fit (worksheet client_ole2.obj_type)
+   IS
+      args        client_ole2.list_type;
+      cell        client_ole2.obj_type;
+      selection   client_ole2.obj_type;
+      colum       client_ole2.obj_type;
+   BEGIN
+      cell := client_ole2.get_obj_property (worksheet, 'Cells');
+      client_ole2.invoke (cell, 'Select');
+      selection := client_ole2.invoke_obj (appl_id, 'Selection');
+      colum := client_ole2.invoke_obj (selection, 'Columns');
+      client_ole2.invoke (colum, 'AutoFit');
+      --now select upper (1,1) for deselection.      
+      args := client_ole2.create_arglist;
+      client_ole2.add_arg (args, 1);
+      client_ole2.add_arg (args, 1);
+      cell := client_ole2.get_obj_property (worksheet, 'Cells', args);
+      client_ole2.invoke (cell, 'Select');
+      client_ole2.destroy_arglist (args);
+      client_ole2.RELEASE_OBJ (colum);
+      client_ole2.RELEASE_OBJ (selection);
+      client_ole2.RELEASE_OBJ (cell);
+   END set_auto_fit;
+
+   PROCEDURE run_macro_on_document (
+      document   client_ole2.obj_type,
+      macro      VARCHAR2
+   )
+   IS
+      arg_list             client_ole2.list_type;
+      bookmarkcollection   client_ole2.obj_type;
+      bookmarkobj          client_ole2.obj_type;
+      selectionobj         client_ole2.obj_type;
+   BEGIN
+      arg_list := client_ole2.create_arglist;
+      client_ole2.add_arg (arg_list, macro);
+      client_ole2.invoke (excel.appl_id, 'Run', arg_list);
+      client_ole2.destroy_arglist (arg_list);
+   END;
+
+   FUNCTION download_file (
+      file_name         IN   VARCHAR2,
+      table_name        IN   VARCHAR2,
+      column_name       IN   VARCHAR2,
+      where_condition   IN   VARCHAR2
+   )
+      RETURN VARCHAR2
+   IS
+      l_ok          BOOLEAN;
+      c_file_name   VARCHAR2 (512);
+      c_path        VARCHAR2 (255);
+   BEGIN
+      SYNCHRONIZE;
+      c_path := client_win_api_environment.get_temp_directory (FALSE);
+
+      IF c_path IS NULL
+      THEN
+         c_path := 'C:\';
+      ELSE
+         c_path := c_path || '\';
+      END IF;
+
+      c_file_name := c_path || file_name;
+      l_ok :=
+         webutil_file_transfer.db_to_client_with_progress
+                                                   (c_file_name,
+                                                    table_name,
+                                                    column_name,
+                                                    where_condition,
+                                                    'Transfer on file system',
+                                                    'Progress'
+                                                   );
+      SYNCHRONIZE;
+
+      IF NOT l_ok
+      THEN
+         msg_popup ('File not found in database', 'E', TRUE);
+      END IF;
+
+      RETURN c_path || file_name;
+   END download_file;
+END;
+Word package
+Package specification
+PACKAGE word
+IS
+   /*
+           Global Word.Application Object --> represent word object.
+   */
+   appl_id   client_ole2.obj_type;
+
+   /*
+           Open file that act as template. Parameter are:
+          _application_ -- global word parameter that we initialize at
+          begining.
+          _file_ -- file name we wish to open --> it can be from database, or filesystem...
+   */
+   FUNCTION file_open (application client_ole2.obj_type, FILE VARCHAR2)
+      RETURN client_ole2.obj_type;
+
+   /*
+           Close current file.
+   */
+   PROCEDURE file_close (document client_ole2.obj_type);
+
+   /*
+           Saves current file (It is useful if we need to save current
+          file using another name)
+   */
+   PROCEDURE file_save_as (document client_ole2.obj_type, FILE VARCHAR2);
+
+   /*
+           (Bizniss end of this whole package;) ) Inserts value in specific word bookmark.
+           _dokcument_ -- Word document.
+           _bookmark_ -- Name of bookmark that is defined in word template,
+           _content_ --  Content we wish to insert into bookmark.
+   */
+   PROCEDURE insertafter_bookmark (
+      document   client_ole2.obj_type,
+      bookmark   VARCHAR2,
+      content    VARCHAR2
+   );
+
+   /*
+           InsertAfter_Bookmark insert after bookmark and then delete that bookmark and this is not
+           good if you itarate through values, so this one do not delete bookmark after insert.
+           same paramters as previous one.
+   */
+   PROCEDURE replace_bookmark (
+      document   client_ole2.obj_type,
+      bookmark   VARCHAR2,
+      content    VARCHAR2
+   );
+
+   /*
+           Saame as previous procedure but it handle next for you.
+   */
+   PROCEDURE insertafter_bookmark_next (
+      document   client_ole2.obj_type,
+      bookmark   VARCHAR2,
+      content    VARCHAR2
+   );
+
+   /*
+           This one after value insert move itself on next row into table. When I say next I mean next-down.
+           This is essential for iterating through word table (one row at the time)
+           We need manualy create new row if it does not exists.!!!
+   */
+   PROCEDURE insertafter_bookmark_down (
+      document   client_ole2.obj_type,
+      bookmark   VARCHAR2,
+      content    VARCHAR2
+   );
+
+   /*
+           Easy...delete bookmark,
+   */
+   PROCEDURE delete_bookmark (document client_ole2.obj_type, bookmark VARCHAR2);
+
+   /*
+           Create new table row (see InsertAfter_Bookmark_Next)
+   */
+   PROCEDURE insert_new_table_row (
+      document   client_ole2.obj_type,
+      bookmark   VARCHAR2
+   );
+
+   /*
+           Move bookmakr (ONLY IN TABLE) left, right, up, down.
+           _direction_ can have following valyes'UP', 'DOWN', 'LEFT', 'RIGHT'
+   */
+   PROCEDURE move_table_bookmark (
+      document    client_ole2.obj_type,
+      bookmark    VARCHAR2,
+      direction   VARCHAR2
+   );
+
+   /*
+           File download.
+           parametar _file_name_  -- client file name (name on client)
+           _table_name_ -- Table name for where BLOB column is.
+           _column_name_ -- BLOB column name that holds Word template.
+           -where_condition_ -- filter.
+   */
+   FUNCTION download_file (
+      file_name         IN   VARCHAR2,
+      table_name        IN   VARCHAR2,
+      column_name       IN   VARCHAR2,
+      where_condition   IN   VARCHAR2
+   )
+      RETURN VARCHAR2;
+
+   /*
+           Calling macro's on bookmarks...only for test.
+   */
+   PROCEDURE run_macro_on_bookmark (
+      document   client_ole2.obj_type,
+      bookmark   VARCHAR2,
+      macro      VARCHAR2
+   );
+
+   PROCEDURE run_macro_on_document (
+      document   client_ole2.obj_type,
+      macro      VARCHAR2
+   );
+END;
+Package body
+PACKAGE BODY word
+IS
+   FUNCTION file_open (application client_ole2.obj_type, FILE VARCHAR2)
+      RETURN client_ole2.obj_type
+   IS
+      arg_list    client_ole2.list_type;
+      document    client_ole2.obj_type;
+      documents   client_ole2.obj_type;
+   BEGIN
+      arg_list := client_ole2.create_arglist;
+      documents := client_ole2.invoke_obj (application, 'documents');
+      client_ole2.add_arg (arg_list, FILE);
+      document := client_ole2.invoke_obj (documents, 'Open', arg_list);
+      client_ole2.destroy_arglist (arg_list);
+      client_ole2.RELEASE_OBJ (documents);
+      RETURN document;
+   END file_open;
+
+   PROCEDURE file_close (document client_ole2.obj_type)
+   IS
+   BEGIN
+      client_ole2.invoke (document, 'Close');
+   --CLIENT_OLE2.RELEASE_OBJ(document);
+   END file_close;
+
+   PROCEDURE file_save_as (document client_ole2.obj_type, FILE VARCHAR2)
+   IS
+      arg_list   client_ole2.list_type;
+   BEGIN
+      arg_list := client_ole2.create_arglist;
+      client_ole2.add_arg (arg_list, FILE);
+      client_ole2.invoke (document, 'SaveAs', arg_list);
+      client_ole2.destroy_arglist (arg_list);
+   --CLIENT_OLE2.RELEASE_OBJ(document);
+   END file_save_as;
+
+   PROCEDURE replace_bookmark (
+      document   client_ole2.obj_type,
+      bookmark   VARCHAR2,
+      content    VARCHAR2
+   )
+   IS
+      arg_list             client_ole2.list_type;
+      bookmarkcollection   client_ole2.obj_type;
+      bookmarkobj          client_ole2.obj_type;
+      selectionobj         client_ole2.obj_type;
+   BEGIN
+      bookmarkcollection :=
+                     client_ole2.invoke_obj (document, 'Bookmarks', arg_list);
+      arg_list := client_ole2.create_arglist;
+      client_ole2.add_arg (arg_list, bookmark);
+      bookmarkobj :=
+                client_ole2.invoke_obj (bookmarkcollection, 'Item', arg_list);
+      client_ole2.destroy_arglist (arg_list);
+      client_ole2.invoke (bookmarkobj, 'Select');
+      selectionobj := client_ole2.invoke_obj (appl_id, 'Selection');
+      arg_list := client_ole2.create_arglist;
+      client_ole2.add_arg (arg_list, content);
+      client_ole2.invoke (selectionobj, 'Delete');
+      client_ole2.invoke (selectionobj, 'InsertAfter', arg_list);
+      client_ole2.destroy_arglist (arg_list);
+      client_ole2.RELEASE_OBJ (selectionobj);
+      client_ole2.RELEASE_OBJ (bookmarkobj);
+      client_ole2.RELEASE_OBJ (bookmarkcollection);
+   END replace_bookmark;
+
+   PROCEDURE insertafter_bookmark (
+      document   client_ole2.obj_type,
+      bookmark   VARCHAR2,
+      content    VARCHAR2
+   )
+   IS
+      arg_list             client_ole2.list_type;
+      bookmarkcollection   client_ole2.obj_type;
+      bookmarkobj          client_ole2.obj_type;
+      selectionobj         client_ole2.obj_type;
+   BEGIN
+      bookmarkcollection :=
+                     client_ole2.invoke_obj (document, 'Bookmarks', arg_list);
+      arg_list := client_ole2.create_arglist;
+      client_ole2.add_arg (arg_list, bookmark);
+      bookmarkobj :=
+                client_ole2.invoke_obj (bookmarkcollection, 'Item', arg_list);
+      client_ole2.destroy_arglist (arg_list);
+      client_ole2.invoke (bookmarkobj, 'Select');
+      selectionobj := client_ole2.invoke_obj (appl_id, 'Selection');
+      arg_list := client_ole2.create_arglist;
+      client_ole2.add_arg (arg_list, content);
+      client_ole2.invoke (selectionobj, 'InsertAfter', arg_list);
+      client_ole2.destroy_arglist (arg_list);
+      client_ole2.RELEASE_OBJ (selectionobj);
+      client_ole2.RELEASE_OBJ (bookmarkobj);
+      client_ole2.RELEASE_OBJ (bookmarkcollection);
+   END insertafter_bookmark;
+
+   PROCEDURE insertafter_bookmark_next (
+      document   client_ole2.obj_type,
+      bookmark   VARCHAR2,
+      content    VARCHAR2
+   )
+   IS
+      arg_list             client_ole2.list_type;
+      bookmarkcollection   client_ole2.obj_type;
+      bookmarkobj          client_ole2.obj_type;
+      selectionobj         client_ole2.obj_type;
+   BEGIN
+      bookmarkcollection :=
+                     client_ole2.invoke_obj (document, 'Bookmarks', arg_list);
+      arg_list := client_ole2.create_arglist;
+      client_ole2.add_arg (arg_list, bookmark);
+      bookmarkobj :=
+                client_ole2.invoke_obj (bookmarkcollection, 'Item', arg_list);
+      client_ole2.destroy_arglist (arg_list);
+      client_ole2.invoke (bookmarkobj, 'Select');
+      selectionobj := client_ole2.invoke_obj (appl_id, 'Selection');
+      arg_list := client_ole2.create_arglist;
+      client_ole2.add_arg (arg_list, content || CHR (13));
+      client_ole2.invoke (selectionobj, 'InsertAfter', arg_list);
+      client_ole2.destroy_arglist (arg_list);
+      client_ole2.RELEASE_OBJ (selectionobj);
+      client_ole2.RELEASE_OBJ (bookmarkobj);
+      client_ole2.RELEASE_OBJ (bookmarkcollection);
+   END insertafter_bookmark_next;
+
+   PROCEDURE insertafter_bookmark_down (
+      document   client_ole2.obj_type,
+      bookmark   VARCHAR2,
+      content    VARCHAR2
+   )
+   IS
+      arg_list             client_ole2.list_type;
+      bookmarkcollection   client_ole2.obj_type;
+      bookmarkobj          client_ole2.obj_type;
+      selectionobj         client_ole2.obj_type;
+   BEGIN
+      bookmarkcollection :=
+                     client_ole2.invoke_obj (document, 'Bookmarks', arg_list);
+      arg_list := client_ole2.create_arglist;
+      client_ole2.add_arg (arg_list, bookmark);
+      bookmarkobj :=
+                client_ole2.invoke_obj (bookmarkcollection, 'Item', arg_list);
+      client_ole2.destroy_arglist (arg_list);
+      client_ole2.invoke (bookmarkobj, 'Select');
+      selectionobj := client_ole2.invoke_obj (appl_id, 'Selection');
+      arg_list := client_ole2.create_arglist;
+      client_ole2.add_arg (arg_list, content);
+      client_ole2.invoke (selectionobj, 'InsertAfter', arg_list);
+      client_ole2.invoke (selectionobj, 'Cut');
+      client_ole2.invoke (selectionobj, 'SelectCell');
+      client_ole2.invoke (selectionobj, 'MoveDown');
+      client_ole2.invoke (selectionobj, 'Paste');
+      client_ole2.destroy_arglist (arg_list);
+      client_ole2.RELEASE_OBJ (selectionobj);
+      client_ole2.RELEASE_OBJ (bookmarkobj);
+      client_ole2.RELEASE_OBJ (bookmarkcollection);
+   END insertafter_bookmark_down;
+
+   PROCEDURE delete_bookmark (document client_ole2.obj_type, bookmark VARCHAR2)
+   IS
+      arg_list             client_ole2.list_type;
+      bookmarkcollection   client_ole2.obj_type;
+      bookmarkobj          client_ole2.obj_type;
+      selectionobj         client_ole2.obj_type;
+   BEGIN
+      bookmarkcollection :=
+                     client_ole2.invoke_obj (document, 'Bookmarks', arg_list);
+      arg_list := client_ole2.create_arglist;
+      client_ole2.add_arg (arg_list, bookmark);
+      bookmarkobj :=
+                client_ole2.invoke_obj (bookmarkcollection, 'Item', arg_list);
+      client_ole2.destroy_arglist (arg_list);
+      client_ole2.invoke (bookmarkobj, 'Select');
+      selectionobj := client_ole2.invoke_obj (appl_id, 'Selection');
+      client_ole2.invoke (selectionobj, 'Delete');
+      client_ole2.RELEASE_OBJ (selectionobj);
+      client_ole2.RELEASE_OBJ (bookmarkobj);
+      client_ole2.RELEASE_OBJ (bookmarkcollection);
+   END delete_bookmark;
+
+   PROCEDURE run_macro_on_bookmark (
+      document   client_ole2.obj_type,
+      bookmark   VARCHAR2,
+      macro      VARCHAR2
+   )
+   IS
+      arg_list             client_ole2.list_type;
+      bookmarkcollection   client_ole2.obj_type;
+      bookmarkobj          client_ole2.obj_type;
+      selectionobj         client_ole2.obj_type;
+   BEGIN
+      bookmarkcollection :=
+                     client_ole2.invoke_obj (document, 'Bookmarks', arg_list);
+      arg_list := client_ole2.create_arglist;
+      client_ole2.add_arg (arg_list, bookmark);
+      bookmarkobj :=
+                client_ole2.invoke_obj (bookmarkcollection, 'Item', arg_list);
+      client_ole2.destroy_arglist (arg_list);
+      client_ole2.invoke (bookmarkobj, 'Select');
+      selectionobj := client_ole2.invoke_obj (appl_id, 'Selection');
+      arg_list := client_ole2.create_arglist;
+      client_ole2.add_arg (arg_list, macro);
+      client_ole2.invoke (word.appl_id, 'Run', arg_list);
+      client_ole2.destroy_arglist (arg_list);
+      client_ole2.RELEASE_OBJ (selectionobj);
+      client_ole2.RELEASE_OBJ (bookmarkobj);
+      client_ole2.RELEASE_OBJ (bookmarkcollection);
+   END;
+
+   PROCEDURE run_macro_on_document (
+      document   client_ole2.obj_type,
+      macro      VARCHAR2
+   )
+   IS
+      arg_list             client_ole2.list_type;
+      bookmarkcollection   client_ole2.obj_type;
+      bookmarkobj          client_ole2.obj_type;
+      selectionobj         client_ole2.obj_type;
+   BEGIN
+      --bookmarkCollection := CLIENT_OLE2.INVOKE_OBJ(document, 'Bookmarks', arg_list);
+      --arg_list := CLIENT_OLE2.CREATE_ARGLIST;
+      --CLIENT_OLE2.ADD_ARG(arg_list, bookmark);
+      --bookmarkObj := CLIENT_OLE2.INVOKE_OBJ(bookmarkCollection, 'Item',arg_list);
+      --CLIENT_OLE2.DESTROY_ARGLIST(arg_list);
+
+      --CLIENT_OLE2.INVOKE(bookmarkObj, 'Select');
+      --selectionObj := CLIENT_OLE2.INVOKE_OBJ(appl_id, 'Selection');
+      arg_list := client_ole2.create_arglist;
+      client_ole2.add_arg (arg_list, macro);
+      client_ole2.invoke (word.appl_id, 'Run', arg_list);
+      client_ole2.destroy_arglist (arg_list);
+   --CLIENT_OLE2.RELEASE_OBJ(selectionObj);
+   --CLIENT_OLE2.RELEASE_OBJ(bookmarkObj);
+   --CLIENT_OLE2.RELEASE_OBJ(bookmarkCollection);
+   END;
+
+   PROCEDURE insert_new_table_row (
+      document   client_ole2.obj_type,
+      bookmark   VARCHAR2
+   )
+   IS
+      arg_list             client_ole2.list_type;
+      bookmarkcollection   client_ole2.obj_type;
+      bookmarkobj          client_ole2.obj_type;
+      selectionobj         client_ole2.obj_type;
+   BEGIN
+      bookmarkcollection :=
+                     client_ole2.invoke_obj (document, 'Bookmarks', arg_list);
+      arg_list := client_ole2.create_arglist;
+      client_ole2.add_arg (arg_list, bookmark);
+      bookmarkobj :=
+                client_ole2.invoke_obj (bookmarkcollection, 'Item', arg_list);
+      client_ole2.destroy_arglist (arg_list);
+      client_ole2.invoke (bookmarkobj, 'Select');
+      selectionobj := client_ole2.invoke_obj (appl_id, 'Selection');
+      arg_list := client_ole2.create_arglist;
+      client_ole2.add_arg (arg_list, 1);
+      client_ole2.invoke (selectionobj, 'InsertRowsBelow', arg_list);
+      client_ole2.destroy_arglist (arg_list);
+      client_ole2.RELEASE_OBJ (selectionobj);
+      client_ole2.RELEASE_OBJ (bookmarkobj);
+      client_ole2.RELEASE_OBJ (bookmarkcollection);
+   END insert_new_table_row;
+
+   PROCEDURE move_down_table_bookmark (
+      document   client_ole2.obj_type,
+      bookmark   VARCHAR2
+   )
+   IS
+      arg_list             client_ole2.list_type;
+      bookmarkcollection   client_ole2.obj_type;
+      bookmarkobj          client_ole2.obj_type;
+      selectionobj         client_ole2.obj_type;
+   BEGIN
+      bookmarkcollection :=
+                     client_ole2.invoke_obj (document, 'Bookmarks', arg_list);
+      arg_list := client_ole2.create_arglist;
+      client_ole2.add_arg (arg_list, bookmark);
+      bookmarkobj :=
+                client_ole2.invoke_obj (bookmarkcollection, 'Item', arg_list);
+      client_ole2.destroy_arglist (arg_list);
+      client_ole2.invoke (bookmarkobj, 'Select');
+      selectionobj := client_ole2.invoke_obj (appl_id, 'Selection');
+      client_ole2.invoke (selectionobj, 'Cut');
+      client_ole2.invoke (selectionobj, 'SelectCell');
+      client_ole2.invoke (selectionobj, 'MoveDown');
+      client_ole2.invoke (selectionobj, 'Paste');
+      client_ole2.RELEASE_OBJ (selectionobj);
+      client_ole2.RELEASE_OBJ (bookmarkobj);
+      client_ole2.RELEASE_OBJ (bookmarkcollection);
+   END move_down_table_bookmark;
+
+   PROCEDURE move_up_table_bookmark (
+      document   client_ole2.obj_type,
+      bookmark   VARCHAR2
+   )
+   IS
+      arg_list             client_ole2.list_type;
+      bookmarkcollection   client_ole2.obj_type;
+      bookmarkobj          client_ole2.obj_type;
+      selectionobj         client_ole2.obj_type;
+   BEGIN
+      bookmarkcollection :=
+                     client_ole2.invoke_obj (document, 'Bookmarks', arg_list);
+      arg_list := client_ole2.create_arglist;
+      client_ole2.add_arg (arg_list, bookmark);
+      bookmarkobj :=
+                client_ole2.invoke_obj (bookmarkcollection, 'Item', arg_list);
+      client_ole2.destroy_arglist (arg_list);
+      client_ole2.invoke (bookmarkobj, 'Select');
+      selectionobj := client_ole2.invoke_obj (appl_id, 'Selection');
+      client_ole2.invoke (selectionobj, 'Cut');
+      client_ole2.invoke (selectionobj, 'SelectCell');
+      client_ole2.invoke (selectionobj, 'MoveUp');
+      client_ole2.invoke (selectionobj, 'Paste');
+      client_ole2.RELEASE_OBJ (selectionobj);
+      client_ole2.RELEASE_OBJ (bookmarkobj);
+      client_ole2.RELEASE_OBJ (bookmarkcollection);
+   END move_up_table_bookmark;
+
+   PROCEDURE move_left_table_bookmark (
+      document   client_ole2.obj_type,
+      bookmark   VARCHAR2
+   )
+   IS
+      arg_list             client_ole2.list_type;
+      bookmarkcollection   client_ole2.obj_type;
+      bookmarkobj          client_ole2.obj_type;
+      selectionobj         client_ole2.obj_type;
+   BEGIN
+      bookmarkcollection :=
+                     client_ole2.invoke_obj (document, 'Bookmarks', arg_list);
+      arg_list := client_ole2.create_arglist;
+      client_ole2.add_arg (arg_list, bookmark);
+      bookmarkobj :=
+                client_ole2.invoke_obj (bookmarkcollection, 'Item', arg_list);
+      client_ole2.destroy_arglist (arg_list);
+      client_ole2.invoke (bookmarkobj, 'Select');
+      selectionobj := client_ole2.invoke_obj (appl_id, 'Selection');
+      client_ole2.invoke (selectionobj, 'Cut');
+      client_ole2.invoke (selectionobj, 'SelectCell');
+      client_ole2.invoke (selectionobj, 'MoveUp');
+      client_ole2.invoke (selectionobj, 'Paste');
+      client_ole2.RELEASE_OBJ (selectionobj);
+      client_ole2.RELEASE_OBJ (bookmarkobj);
+      client_ole2.RELEASE_OBJ (bookmarkcollection);
+   END move_left_table_bookmark;
+
+   PROCEDURE move_table_bookmark (
+      document    client_ole2.obj_type,
+      bookmark    VARCHAR2,
+      direction   VARCHAR2
+   )
+   IS
+      arg_list             client_ole2.list_type;
+      bookmarkcollection   client_ole2.obj_type;
+      bookmarkobj          client_ole2.obj_type;
+      selectionobj         client_ole2.obj_type;
+   BEGIN
+      bookmarkcollection :=
+                     client_ole2.invoke_obj (document, 'Bookmarks', arg_list);
+      arg_list := client_ole2.create_arglist;
+      client_ole2.add_arg (arg_list, bookmark);
+      bookmarkobj :=
+                client_ole2.invoke_obj (bookmarkcollection, 'Item', arg_list);
+      client_ole2.destroy_arglist (arg_list);
+      client_ole2.invoke (bookmarkobj, 'Select');
+      selectionobj := client_ole2.invoke_obj (appl_id, 'Selection');
+
+      IF UPPER (direction) IN ('UP', 'DOWN', 'LEFT', 'RIGHT')
+      THEN
+         client_ole2.invoke (selectionobj, 'Cut');
+         client_ole2.invoke (selectionobj, 'SelectCell');
+         client_ole2.invoke (selectionobj, 'Move' || direction);
+         client_ole2.invoke (selectionobj, 'Paste');
+      END IF;
+
+      client_ole2.RELEASE_OBJ (selectionobj);
+      client_ole2.RELEASE_OBJ (bookmarkobj);
+      client_ole2.RELEASE_OBJ (bookmarkcollection);
+   END move_table_bookmark;
+
+   FUNCTION download_file (
+      file_name         IN   VARCHAR2,
+      table_name        IN   VARCHAR2,
+      column_name       IN   VARCHAR2,
+      where_condition   IN   VARCHAR2
+   )
+      RETURN VARCHAR2
+   IS
+      l_ok          BOOLEAN;
+      c_file_name   VARCHAR2 (512);
+      c_path        VARCHAR2 (255);
+   BEGIN
+      SYNCHRONIZE;
+      c_path := client_win_api_environment.get_temp_directory (FALSE);
+
+      IF c_path IS NULL
+      THEN
+         c_path := 'C:\';
+      ELSE
+         c_path := c_path || '\';
+      END IF;
+
+      c_file_name := c_path || file_name;
+      l_ok :=
+         webutil_file_transfer.db_to_client_with_progress
+                                                   (c_file_name,
+                                                    table_name,
+                                                    column_name,
+                                                    where_condition,
+                                                    'Transfer on file system',
+                                                    'Progress'
+                                                   );
+      SYNCHRONIZE;
+      RETURN c_path || file_name;
+   END download_file;
+END;
