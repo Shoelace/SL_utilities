@@ -206,3 +206,6 @@ RAISE;
 
 /
 
+-- see http://www.oracle-developer.net/display.php?id=426
+
+--ASSOCIATE STATISTICS WITH FUNCTIONS Custom_fn USING stats_ot;
