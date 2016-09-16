@@ -1,15 +1,5 @@
 CREATE OR REPLACE PACKAGE BODY UTL_CALL_STACK AS
 
-/*
-TYPE stackline IS record  (
-handle VARCHAR2(30),
-line NUMBER,
-object_name VARCHAR2(255),
-caller_type varchar2(50));
-
-TYPE callstack IS TABLE OF stackline;
-*/
-
 function getCallStack(pskip number default 0) return callstack
 IS
 	--orcle docs say format_call stack only returns 2000.. but might as well be safe
@@ -167,45 +157,38 @@ END getCallStack;
       cs callstack;
   BEGIN
     cs := getcallstack(1);
-    return LENGTH(cs(dynamic_depth).object_name) - LENGTH(REPLACE(cs(dynamic_depth).object_name, '.'));
+    return nvl(LENGTH(cs(dynamic_depth).object_name) - LENGTH(REPLACE(cs(dynamic_depth).object_name, '.')) ,-1) ;
     --RETURN regexp_count(cs(dynamic_depth).object_name,'\.');
-    --RETURN length(translate(cs(dynamic_depth).object_name,'.abcdefghijk', '.'));
   END lexical_depth;
 
   FUNCTION error_depth RETURN PLS_INTEGER AS
   BEGIN
-    -- TODO: Implementation required for FUNCTION UTL_CALL_STACK.error_depth
-    RETURN NULL;
+    RETURN regexp_count(DBMS_UTILITY.format_error_stack,chr(10));
   END error_depth;
 
   FUNCTION error_number(error_depth IN PLS_INTEGER) RETURN PLS_INTEGER AS
   BEGIN
-    -- TODO: Implementation required for FUNCTION UTL_CALL_STACK.error_number
-    RETURN NULL;
+    RETURN regexp_substr(DBMS_UTILITY.format_error_stack,'ORA-([0-9]*): (.*)',1,error_depth,'',1) ;
   END error_number;
 
   FUNCTION error_msg(error_depth IN PLS_INTEGER) RETURN VARCHAR2 AS
   BEGIN
-    -- TODO: Implementation required for FUNCTION UTL_CALL_STACK.error_msg
-    RETURN NULL;
+    RETURN regexp_substr(DBMS_UTILITY.format_error_stack,'ORA-([0-9]*): (.*)',1,error_depth,'',2);
   END error_msg;
 
   FUNCTION backtrace_depth RETURN PLS_INTEGER AS
   BEGIN
-    -- TODO: Implementation required for FUNCTION UTL_CALL_STACK.backtrace_depth
-    RETURN NULL;
+    RETURN regexp_count(DBMS_UTILITY.format_error_backtrace,chr(10));
   END backtrace_depth;
 
   FUNCTION backtrace_unit(backtrace_depth IN PLS_INTEGER) RETURN VARCHAR2 AS
   BEGIN
-    -- TODO: Implementation required for FUNCTION UTL_CALL_STACK.backtrace_unit
-    RETURN NULL;
+    RETURN regexp_substr(DBMS_UTILITY.format_error_backtrace,'.*"(.*)"',1,backtrace_depth,'',1);
   END backtrace_unit;
 
   FUNCTION backtrace_line(backtrace_depth IN PLS_INTEGER) RETURN PLS_INTEGER AS
   BEGIN
-    -- TODO: Implementation required for FUNCTION UTL_CALL_STACK.backtrace_line
-    RETURN NULL;
+    RETURN regexp_substr(DBMS_UTILITY.format_error_backtrace,'line (.*)',1,backtrace_depth,'',1);
   END backtrace_line;
 
 END UTL_CALL_STACK;
