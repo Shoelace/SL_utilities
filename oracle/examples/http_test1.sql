@@ -8,11 +8,11 @@
     NAME  VARCHAR2(255);
   BEGIN
 
-get_page('http://www.google.com','','');
-/*
+--get_page('http://www.google.com','','');
+
   --  utl_http.set_proxy('proxy.it.my-company.com', 'my-company.com');
 
-    req := utl_http.begin_request('http://URL');
+    req := utl_http.begin_request('https://ci.e-business.sro.vic.gov.au/mylandtax/version.html');
     
     utl_http.set_header(req, 'User-Agent', 'Mozilla/4.0');
 
@@ -36,7 +36,6 @@ get_page('http://www.google.com','','');
   EXCEPTION
     WHEN utl_http.end_of_body THEN
       utl_http.end_response(resp);
-      */
   END;
   /
   

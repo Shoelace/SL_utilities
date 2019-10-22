@@ -22,20 +22,32 @@ begin
       --dbms_sql.define_column(l_theCursor, i, l_columnValue, 4000);
   --end loop;
    FOR i IN 1 .. l_colCnt loop
-       l_clob := l_clob|| l_separator || RPAD(l_descTbl(i).col_name , greatest(l_descTbl(i).col_max_len ,l_descTbl(i).col_name_len )) ;
+--   DBMS_OUTPUT.PUT_LINE ('col_type:'||l_descTbl(i).col_type);
+--   DBMS_OUTPUT.PUT_LINE ('col_name:'||l_descTbl(i).col_name);
+--   DBMS_OUTPUT.PUT_LINE ('col_max_len:'||l_descTbl(i).col_max_len);
+--   DBMS_OUTPUT.PUT_LINE ('col_name_len:'||l_descTbl(i).col_name_len);
+--   DBMS_OUTPUT.PUT_LINE ('col_precision:'||l_descTbl(i).col_precision);
+--   DBMS_OUTPUT.PUT_LINE ('col_scale:'||l_descTbl(i).col_scale);
+        IF l_descTbl(i).col_type = 2 THEN
+          l_clob := l_clob|| l_separator || RPAD(l_descTbl(i).col_name , greatest(l_descTbl(i).col_precision ,l_descTbl(i).col_name_len )) ;
+        ELSE
+          l_clob := l_clob|| l_separator || RPAD(l_descTbl(i).col_name , greatest(l_descTbl(i).col_max_len ,l_descTbl(i).col_name_len )) ;
+        END IF;   
        dbms_sql.define_column( l_theCursor, i, l_columnValue, 4000 );
        l_separator := ' ';
    END loop;
-   l_clob := l_clob||'
-';
+   l_clob := l_clob||chr(10);
    l_separator := '';
    FOR i IN 1 .. l_colCnt loop
-       l_clob := l_clob|| l_separator || RPAD('-',greatest(l_descTbl(i).col_max_len ,l_descTbl(i).col_name_len ),'-') ;
+        IF l_descTbl(i).col_type = 2 THEN
+          l_clob := l_clob|| l_separator || RPAD('-',greatest(l_descTbl(i).col_precision ,l_descTbl(i).col_name_len ),'-') ;
+        ELSE
+          l_clob := l_clob|| l_separator || RPAD('-',greatest(l_descTbl(i).col_max_len ,l_descTbl(i).col_name_len ),'-') ;
+        END IF;   
        dbms_sql.define_column( l_theCursor, i, l_columnValue, 4000 );
        l_separator := ' ';
    END loop;
-   l_clob := l_clob||'
-';
+   l_clob := l_clob||chr(10);
 
 
   l_status := dbms_sql.execute(l_theCursor);
@@ -45,10 +57,13 @@ begin
 
          dbms_sql.column_value( l_theCursor, i, l_columnValue );
 
-         l_clob := l_clob|| rpad( l_columnValue , greatest(l_descTbl(i).col_max_len ,l_descTbl(i).col_name_len ) ) || ' ' ;
+            IF l_descTbl(i).col_type = 2 THEN
+               l_clob := l_clob|| lpad( NVL(l_columnValue,' ') , greatest(l_descTbl(i).col_precision ,l_descTbl(i).col_name_len ) ) || ' ' ;
+            ELSE
+               l_clob := l_clob|| rpad( NVL(l_columnValue,' ') , greatest(l_descTbl(i).col_max_len ,l_descTbl(i).col_name_len ) ) || ' ' ;
+            END IF;
       END loop;
-   l_clob := l_clob||'
-';
+   l_clob := l_clob||chr(10);
   END loop;
   return l_clob;
 exception

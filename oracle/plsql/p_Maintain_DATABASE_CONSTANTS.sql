@@ -22,7 +22,6 @@ $GITEND*/
   First_Line CONSTANT VARCHAR2(80)    := 'CREATE OR REPLACE PACKAGE "'||USER||'"."DATABASE_CONSTANTS" AUTHID CURRENT_USER IS';
   Last_Line  CONSTANT VARCHAR2(80)    := 'END;';
   v_DDL        CLOB  := First_Line||Newline||c_GIT||Newline||'--to update this package execute:'||$$PLSQL_UNIT||Newline||Newline;
-
   
   TYPE obj_table IS TABLE OF VARCHAR2(32);
   --list of custom objects that need checking for existance.
